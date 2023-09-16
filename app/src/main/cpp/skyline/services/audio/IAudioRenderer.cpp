@@ -50,7 +50,7 @@ namespace skyline::service::audio {
         auto performanceOutput{request.outputBuf.size() > 1 ? request.outputBuf.at(1) : span<u8>{}};
 
         if (auto result{impl.RequestUpdate(input, performanceOutput, output)}; result.IsError()) {
-            Logger::Error("Update failed error: 0x{:X}", u32{result});
+            LOGE("Update failed error: 0x{:X}", u32{result});
             return Result{result};
         }
 
@@ -72,7 +72,7 @@ namespace skyline::service::audio {
             return Result{Service::Audio::ResultNotSupported};
 
         auto handle{state.process->InsertItem(renderedEvent)};
-        Logger::Debug("System Event Handle: 0x{:X}", handle);
+        LOGD("System Event Handle: 0x{:X}", handle);
         response.copyHandles.push_back(handle);
         return {};
     }

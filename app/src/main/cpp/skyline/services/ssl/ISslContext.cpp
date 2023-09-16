@@ -12,9 +12,13 @@ namespace skyline::service::ssl {
             Der = 2,
         } certificateFormat{request.Pop<CertificateFormat>()};
 
-        Logger::Debug("Certificate format: {}", certificateFormat);
+        LOGD("Certificate format: {}", certificateFormat);
 
         response.Push<u64>(0);
+        return {};
+    }
+
+    Result ISslContext::RegisterInternalPki(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         return {};
     }
 }

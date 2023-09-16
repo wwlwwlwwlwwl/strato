@@ -48,7 +48,7 @@ namespace skyline::soc::host1x {
     ChannelCommandFifo::ChannelCommandFifo(const DeviceState &state, SyncpointSet &syncpoints) : state(state), gatherQueue(GatherQueueSize), host1XClass(syncpoints), nvDecClass(syncpoints), vicClass(syncpoints) {}
 
     void ChannelCommandFifo::Send(ClassId targetClass, u32 method, u32 argument) {
-        Logger::Verbose("Calling method in class: 0x{:X}, method: 0x{:X}, argument: 0x{:X}", targetClass, method, argument);
+        LOGV("Calling method in class: 0x{:X}, method: 0x{:X}, argument: 0x{:X}", targetClass, method, argument);
 
         switch (targetClass) {
             case ClassId::Host1x:
@@ -61,7 +61,7 @@ namespace skyline::soc::host1x {
                 vicClass.CallMethod(method, argument);
                 break;
             default:
-                Logger::Error("Sending method to unimplemented class: 0x{:X}", targetClass);
+                LOGE("Sending method to unimplemented class: 0x{:X}", targetClass);
                 break;
         }
     }
@@ -115,31 +115,29 @@ namespace skyline::soc::host1x {
 
     void ChannelCommandFifo::Run() {
         if (int result{pthread_setname_np(pthread_self(), "ChannelCmdFifo")})
-            Logger::Warn("Failed to set the thread name: {}", strerror(result));
+            LOGW("Failed to set the thread name: {}", strerror(result));
+        AsyncLogger::UpdateTag();
 
         try {
             signal::SetSignalHandler({SIGINT, SIGILL, SIGTRAP, SIGBUS, SIGFPE}, signal::ExceptionalSignalHandler);
             signal::SetSignalHandler({SIGSEGV}, nce::NCE::HostSignalHandler); // We may access NCE trapped memory
 
             gatherQueue.Process([this](span<u32> gather) {
-                Logger::Debug("Processing pushbuffer: 0x{:X}, size: 0x{:X}", gather.data(), gather.size());
+                LOGD("Processing pushbuffer: {}, size: 0x{:X}", fmt::ptr(gather.data()), gather.size());
                 Process(gather);
             }, [] {});
         } catch (const signal::SignalException &e) {
             if (e.signal != SIGINT) {
-                Logger::Error("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
-                Logger::EmulationContext.Flush();
+                LOGE("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
                 signal::BlockSignal({SIGINT});
                 state.process->Kill(false);
             }
         } catch (const exception &e) {
-            Logger::ErrorNoPrefix("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
-            Logger::EmulationContext.Flush();
+            LOGENF("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
             signal::BlockSignal({SIGINT});
             state.process->Kill(false);
         } catch (const std::exception &e) {
-            Logger::Error(e.what());
-            Logger::EmulationContext.Flush();
+            LOGE("{}", e.what());
             signal::BlockSignal({SIGINT});
             state.process->Kill(false);
         }

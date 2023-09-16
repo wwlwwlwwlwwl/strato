@@ -7,6 +7,14 @@
 #include <jni.h>
 
 namespace skyline {
+    struct DhcpInfo {
+        i32 ipAddress;
+        i32 subnet;
+        i32 gateway;
+        i32 dns1;
+        i32 dns2;
+    };
+
     /**
      * @brief A wrapper over std::string that supports construction using a JNI jstring
      */
@@ -177,21 +185,54 @@ namespace skyline {
         KeyboardCloseResult ShowValidationResult(KeyboardHandle dialog, KeyboardTextCheckResult checkResult, std::u16string message);
 
         /**
+         * @brief A call to EmulationActivity.reportCrash in Kotlin
+         */
+        void reportCrash();
+
+        /**
+         * @brief A call to EmulationActivity.showPipelineLoadingScreen in Kotlin
+         */
+        void ShowPipelineLoadingScreen(u32 totalPipelineCount);
+
+        /**
+         * @brief A call to EmulationActivity.updatePipelineLoadingProgress in Kotlin
+         */
+        void UpdatePipelineLoadingProgress(u32 progress);
+
+        /**
+         * @brief A call to EmulationActivity.hidePipelineLoadingScreen in Kotlin
+         */
+        void HidePipelineLoadingScreen();
+
+        /**
          * @brief A call to EmulationActivity.getVersionCode in Kotlin
          * @return A version code in Vulkan's format with 14-bit patch + 10-bit major and minor components
          */
         i32 GetVersionCode();
 
+        /**
+         * @brief A call to EmulationActivity.getDhcpInfo in Kotlin
+         */
+        DhcpInfo GetDhcpInfo();
+
       private:
         jmethodID initializeControllersId;
         jmethodID vibrateDeviceId;
         jmethodID clearVibrationDeviceId;
+
         jmethodID showKeyboardId;
         jmethodID waitForSubmitOrCancelId;
         jmethodID closeKeyboardId;
         jmethodID showValidationResultId;
+        jmethodID getIntegerValueId;
+        jmethodID reportCrashId;
+
+        jmethodID showPipelineLoadingScreenId;
+        jmethodID updatePipelineLoadingProgressId;
+        jmethodID hidePipelineLoadingScreenId;
+
         jmethodID getVersionCodeId;
 
-        jmethodID getIntegerValueId;
+        jmethodID getDhcpInfoId;
     };
 }

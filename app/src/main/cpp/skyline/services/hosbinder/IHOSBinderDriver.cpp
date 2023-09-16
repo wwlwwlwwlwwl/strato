@@ -45,7 +45,7 @@ namespace skyline::service::hosbinder {
                 layerStrongReferenceCount = value;
 
             if (layerStrongReferenceCount < 0) {
-                Logger::Warn("Strong reference count is lower than 0: {} + {} = {}", (layerStrongReferenceCount - value), value, layerStrongReferenceCount);
+                LOGW("Strong reference count is lower than 0: {} + {} = {}", (layerStrongReferenceCount - value), value, layerStrongReferenceCount);
                 layerStrongReferenceCount = 0;
             }
 
@@ -55,7 +55,7 @@ namespace skyline::service::hosbinder {
             layerWeakReferenceCount += value;
 
             if (layerWeakReferenceCount < 0) {
-                Logger::Warn("Weak reference count is lower than 0: {} + {} = {}", (layerWeakReferenceCount - value), value, layerWeakReferenceCount);
+                LOGW("Weak reference count is lower than 0: {} + {} = {}", (layerWeakReferenceCount - value), value, layerWeakReferenceCount);
                 layerWeakReferenceCount = 0;
             }
 
@@ -63,7 +63,7 @@ namespace skyline::service::hosbinder {
                 layer.reset();
         }
 
-        Logger::Debug("Reference Change: {} {} reference (S{} W{})", value, isStrong ? "strong" : "weak", layerStrongReferenceCount, layerWeakReferenceCount);
+        LOGD("Reference Change: {} {} reference (S{} W{})", value, isStrong ? "strong" : "weak", layerStrongReferenceCount, layerWeakReferenceCount);
 
         return {};
     }
@@ -79,7 +79,7 @@ namespace skyline::service::hosbinder {
             throw exception("Getting unknown handle from binder object: 0x{:X}", handleId);
 
         KHandle handle{state.process->InsertItem(layer->bufferEvent)};
-        Logger::Debug("Display Buffer Event Handle: 0x{:X}", handle);
+        LOGD("Display Buffer Event Handle: 0x{:X}", handle);
         response.copyHandles.push_back(handle);
 
         return {};
@@ -123,7 +123,7 @@ namespace skyline::service::hosbinder {
             layer = std::make_shared<GraphicBufferProducer>(state, nvMap);
         }
         else // Ignore new layer creations if one already exists
-            Logger::Warn("Creation of multiple layers is not supported. Ignoring creation of new layers.");
+            LOGW("Creation of multiple layers is not supported. Ignoring creation of new layers.");
 
         return DefaultLayerId;
     }
@@ -168,6 +168,6 @@ namespace skyline::service::hosbinder {
         if (layerId != DefaultLayerId)
             throw exception("Destroying non-existent layer #{}", layerId);
         else if (layer)
-            throw exception("Destroying layer #{} which hasn't been closed: Weak References: {}, Strong References: {}", layerWeakReferenceCount, layerStrongReferenceCount);
+            throw exception("Destroying layer #{} which hasn't been closed: Weak References: {}, Strong References: {}", layerId, layerWeakReferenceCount, layerStrongReferenceCount);
     }
 }

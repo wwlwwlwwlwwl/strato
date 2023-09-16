@@ -3,11 +3,13 @@
 
 #include <os.h>
 #include <vfs/os_filesystem.h>
+#include <vfs/nca.h>
 #include <loader/loader.h>
 #include "results.h"
 #include "IStorage.h"
 #include "IMultiCommitManager.h"
 #include "IFileSystemProxy.h"
+#include "ISaveDataInfoReader.h"
 
 namespace skyline::service::fssrv {
     IFileSystemProxy::IFileSystemProxy(const DeviceState &state, ServiceManager &manager) : BaseService(state, manager) {}
@@ -74,6 +76,21 @@ namespace skyline::service::fssrv {
         return OpenSaveDataFileSystem(session, request, response);
     }
 
+    Result IFileSystemProxy::OpenSaveDataInfoReader(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        manager.RegisterService(SRVREG(ISaveDataInfoReader), session, response);
+        return {};
+    }
+
+    Result IFileSystemProxy::OpenSaveDataInfoReaderBySaveDataSpaceId(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        manager.RegisterService(SRVREG(ISaveDataInfoReader), session, response);
+        return {};
+    }
+
+    Result IFileSystemProxy::OpenSaveDataInfoReaderOnlyCacheStorage(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        manager.RegisterService(SRVREG(ISaveDataInfoReader), session, response);
+        return {};
+    }
+
     Result IFileSystemProxy::OpenDataStorageByCurrentProcess(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         if (!state.loader->romFs)
             return result::NoRomFsAvailable;
@@ -85,9 +102,23 @@ namespace skyline::service::fssrv {
     Result IFileSystemProxy::OpenDataStorageByDataId(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         auto storageId{request.Pop<StorageId>()};
         request.Skip<std::array<u8, 7>>(); // 7-bytes padding
-        auto titleId{request.Pop<u64>()};
+        auto dataId{request.Pop<u64>()};
 
-        auto romFs{std::make_shared<IStorage>(state.os->assetFileSystem->OpenFile(fmt::format("romfs/{:016X}", titleId)), state, manager)};
+        auto systemArchivesFileSystem{std::make_shared<vfs::OsFileSystem>(state.os->publicAppFilesPath + "/switch/nand/system/Contents/registered/")};
+        auto systemArchives{systemArchivesFileSystem->OpenDirectory("")};
+        auto keyStore{std::make_shared<skyline::crypto::KeyStore>(state.os->privateAppFilesPath + "keys")};
+
+        for (const auto &entry : systemArchives->Read()) {
+            std::shared_ptr<vfs::Backing> backing{systemArchivesFileSystem->OpenFile(entry.name)};
+            auto nca{vfs::NCA(backing, keyStore)};
+
+            if (nca.header.programId == dataId && nca.romFs != nullptr) {
+                manager.RegisterService(std::make_shared<IStorage>(nca.romFs, state, manager), session, response);
+                return {};
+            }
+        }
+
+        auto romFs{std::make_shared<IStorage>(state.os->assetFileSystem->OpenFile(fmt::format("romfs/{:016X}", dataId)), state, manager)};
 
         manager.RegisterService(romFs, session, response);
         return {};

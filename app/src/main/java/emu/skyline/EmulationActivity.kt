@@ -13,31 +13,45 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.content.res.AssetManager
 import android.content.res.Configuration
+import android.content.res.Resources
+import android.graphics.Color
 import android.graphics.PointF
 import android.graphics.drawable.Icon
 import android.hardware.display.DisplayManager
+import android.net.DhcpInfo
+import android.net.wifi.WifiManager
 import android.os.*
 import android.util.Log
 import android.util.Rational
+import android.util.TypedValue
 import android.view.*
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.getSystemService
 import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import androidx.core.view.updateMargins
+import androidx.core.view.updatePadding
 import androidx.fragment.app.FragmentTransaction
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
+import androidx.window.layout.WindowLayoutInfo
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
-import emu.skyline.BuildConfig
 import emu.skyline.applet.swkbd.SoftwareKeyboardConfig
 import emu.skyline.applet.swkbd.SoftwareKeyboardDialog
 import emu.skyline.data.AppItem
 import emu.skyline.data.AppItemTag
 import emu.skyline.databinding.EmuActivityBinding
+import emu.skyline.emulation.PipelineLoadingFragment
 import emu.skyline.input.*
 import emu.skyline.loader.RomFile
 import emu.skyline.loader.getRomFormat
@@ -47,14 +61,20 @@ import emu.skyline.settings.NativeSettings
 import emu.skyline.utils.ByteBufferSerializable
 import emu.skyline.utils.GpuDriverHelper
 import emu.skyline.utils.serializable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.FutureTask
 import javax.inject.Inject
 import kotlin.math.abs
 
+
 private const val ActionPause = "${BuildConfig.APPLICATION_ID}.ACTION_EMULATOR_PAUSE"
 private const val ActionMute = "${BuildConfig.APPLICATION_ID}.ACTION_EMULATOR_MUTE"
+
+private val Number.toPx get() = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, this.toFloat(), Resources.getSystem().displayMetrics).toInt()
 
 @AndroidEntryPoint
 class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTouchListener, DisplayManager.DisplayListener {
@@ -153,6 +173,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     var fps : Int = 0
     var averageFrametime : Float = 0.0f
     var averageFrametimeDeviation : Float = 0.0f
+    var ramUsage : Long = 0
 
     /**
      * Writes the current performance statistics into [fps], [averageFrametime] and [averageFrametimeDeviation] fields
@@ -305,6 +326,14 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
             }
         )
 
+        lifecycleScope.launch(Dispatchers.Main) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                WindowInfoTracker.getOrCreate(this@EmulationActivity)
+                    .windowLayoutInfo(this@EmulationActivity)
+                    .collect { updateCurrentLayout(it) }
+            }
+        }
+
         if (emulationSettings.perfStats) {
             if (emulationSettings.disableFrameThrottling)
                 binding.perfStats.setTextColor(getColor(R.color.colorPerfStatsSecondary))
@@ -313,7 +342,9 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
                 postDelayed(object : Runnable {
                     override fun run() {
                         updatePerformanceStatistics()
-                        text = "$fps FPS\n${"%.1f".format(averageFrametime)}±${"%.2f".format(averageFrametimeDeviation)}ms"
+                        // We read the `VmRSS` value from the kernel
+                        ramUsage = File("/proc/self/statm").readLines()[0].split(' ')[1].toLong() * 4096 / 1000000
+                        text = "$fps FPS • $ramUsage MB"
                         postDelayed(this, 250)
                     }
                 }, 250)
@@ -345,8 +376,10 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
             setOnClickListener { binding.onScreenControllerView.isInvisible = !binding.onScreenControllerView.isInvisible }
         }
 
+        binding.onScreenControllerView.isInvisible = isControllerConnected()
+
         binding.onScreenPauseToggle.apply {
-            isGone = binding.onScreenControllerView.isGone
+            isGone = !emulationSettings.showPauseButton
             setOnClickListener {
                 if (isEmulatorPaused) {
                     resumeEmulator()
@@ -447,7 +480,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         }
     }
 
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode : Boolean, newConfig : Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
 
@@ -464,10 +497,11 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         } else {
             try {
                 unregisterReceiver(pictureInPictureReceiver)
-            } catch (ignored : Exception) { }
+            } catch (ignored : Exception) {
+            }
 
             resumeEmulator()
-            
+
             binding.onScreenControllerView.apply {
                 controllerType = inputHandler.getFirstControllerType()
                 isGone = controllerType == ControllerType.None || !appSettings.onScreenControl
@@ -476,9 +510,35 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
                 isGone = binding.onScreenControllerView.isGone
             }
             binding.onScreenPauseToggle.apply {
-                isGone = binding.onScreenControllerView.isGone
+                isGone = !emulationSettings.showPauseButton
             }
         }
+    }
+
+    /**
+     * Updating the layout depending on type and state of device
+     */
+    private fun updateCurrentLayout(newLayoutInfo : WindowLayoutInfo) {
+        if (!emulationSettings.enableFoldableLayout) return
+        val isFolding = (newLayoutInfo.displayFeatures.find { it is FoldingFeature } as? FoldingFeature)?.let {
+            if (it.isSeparating) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                if (it.orientation == FoldingFeature.Orientation.HORIZONTAL) {
+                    binding.gameViewContainer.layoutParams.height = it.bounds.top
+                    binding.overlayViewContainer.layoutParams.height = it.bounds.bottom - 48.toPx
+                    binding.overlayViewContainer.updatePadding(0, 0, 0, 24.toPx)
+                }
+            }
+            it.isSeparating
+        } ?: false
+        if (!isFolding) {
+            binding.gameViewContainer.layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
+            binding.overlayViewContainer.updatePadding(0, 0, 0, 0)
+            binding.overlayViewContainer.layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
+            requestedOrientation = emulationSettings.orientation
+        }
+        binding.gameViewContainer.requestLayout()
+        binding.overlayViewContainer.requestLayout()
     }
 
     /**
@@ -512,6 +572,44 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         vibrators.clear()
     }
 
+    private lateinit var pipelineLoadingFragment : PipelineLoadingFragment
+
+    /**
+     * Called by native code to show the pipeline loading progress screen
+     */
+    @Suppress("unused")
+    fun showPipelineLoadingScreen(totalPipelineCount : Int) {
+        pipelineLoadingFragment = PipelineLoadingFragment.newInstance(item, totalPipelineCount)
+
+        supportFragmentManager
+            .beginTransaction()
+            .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
+            .replace(R.id.emulation_fragment, pipelineLoadingFragment)
+            .commit()
+    }
+
+    /**
+     * Called by native code to update the pipeline loading progress
+     */
+    @Suppress("unused")
+    fun updatePipelineLoadingProgress(progress : Int) {
+        runOnUiThread {
+            pipelineLoadingFragment.updateProgress(progress)
+        }
+    }
+
+    /**
+     * Called by native code to hide the pipeline loading progress screen
+     */
+    @Suppress("unused")
+    fun hidePipelineLoadingScreen() {
+        supportFragmentManager
+            .beginTransaction()
+            .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
+            .remove(pipelineLoadingFragment)
+            .commit()
+    }
+
     override fun surfaceCreated(holder : SurfaceHolder) {
         Log.d(Tag, "surfaceCreated Holder: $holder")
 
@@ -543,6 +641,21 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
                 gameSurface = null
                 return
             }
+    }
+
+    private fun isControllerConnected() : Boolean {
+        val deviceIds = InputDevice.getDeviceIds()
+
+        deviceIds.forEach { deviceId ->
+            InputDevice.getDevice(deviceId).apply {
+                // Verify that the device has gamepad buttons, control sticks, or both.
+                if (sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK) {
+                    // This device is a game controller.
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     override fun dispatchKeyEvent(event : KeyEvent) : Boolean {
@@ -628,6 +741,12 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     }
 
     @Suppress("unused")
+    fun getDhcpInfo() : DhcpInfo {
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        return wifiManager.dhcpInfo
+    }
+
+    @Suppress("unused")
     fun closeKeyboard(dialog : SoftwareKeyboardDialog) {
         runOnUiThread { dialog.dismiss() }
     }
@@ -657,6 +776,21 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     fun getVersionCode() : Int {
         val (major, minor, patch) = BuildConfig.VERSION_NAME.split('-')[0].split('.').map { it.toUInt() }
         return ((major shl 22) or (minor shl 12) or (patch)).toInt()
+    }
+
+    @Suppress("unused")
+    fun reportCrash() {
+        if (BuildConfig.BUILD_TYPE != "release")
+            return
+        runOnUiThread {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.game_crash))
+                .setMessage(getString(R.string.game_crash_message))
+                .setPositiveButton(getString(android.R.string.ok)) { _, _ ->
+                    shouldFinish = true
+                    returnFromEmulation()
+                }.show()
+        }
     }
 
     private val insetsOrMarginHandler = View.OnApplyWindowInsetsListener { view, insets ->

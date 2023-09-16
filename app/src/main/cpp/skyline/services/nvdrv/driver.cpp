@@ -13,7 +13,7 @@ namespace skyline::service::nvdrv {
     Driver::Driver(const DeviceState &state) : state(state), core(state) {}
 
     NvResult Driver::OpenDevice(std::string_view path, FileDescriptor fd, const SessionContext &ctx) {
-        Logger::Debug("Opening NvDrv device ({}): {}", fd, path);
+        LOGD("Opening NvDrv device ({}): {}", fd, path);
         auto pathHash{util::Hash(path)};
 
         #define DEVICE_SWITCH(cases) \
@@ -75,7 +75,7 @@ namespace skyline::service::nvdrv {
                 constexpr u32 GetConfigIoctl{0xC183001B};
                 // GetConfig is the only ioctl that's expected to fail with one of these errors in normal use so ignore it
                 if (ioctl != GetConfigIoctl)
-                    Logger::Warn("IOCTL {} failed: 0x{:X}", ioctl, static_cast<i32>(result));
+                    LOGW("IOCTL {} failed: 0x{:X}", ioctl, static_cast<i32>(result));
                 return result;
         }
     }
@@ -106,7 +106,7 @@ namespace skyline::service::nvdrv {
     NvResult Driver::Ioctl(FileDescriptor fd, IoctlDescriptor cmd, span<u8> buffer) {
         try {
             std::shared_lock lock(deviceMutex);
-            Logger::Debug("fd: {}, cmd: 0x{:X}, device: {}", fd, cmd.raw, devices.at(fd)->GetName());
+            LOGD("fd: {}, cmd: 0x{:X}, device: {}", fd, cmd.raw, devices.at(fd)->GetName());
             TRACE_EVENT("service", "Ioctl", "fd", fd, "cmd", cmd.raw);
             return ConvertResult(LogIoctlResult(devices.at(fd)->Ioctl(cmd, buffer), cmd.raw));
         } catch (const std::out_of_range &) {
@@ -117,7 +117,7 @@ namespace skyline::service::nvdrv {
     NvResult Driver::Ioctl2(FileDescriptor fd, IoctlDescriptor cmd, span<u8> buffer, span<u8> inlineBuffer) {
         try {
             std::shared_lock lock(deviceMutex);
-            Logger::Debug("fd: {}, cmd: 0x{:X}, device: {}", fd, cmd.raw, devices.at(fd)->GetName());
+            LOGD("fd: {}, cmd: 0x{:X}, device: {}", fd, cmd.raw, devices.at(fd)->GetName());
             TRACE_EVENT("service", "Ioctl", "fd", fd, "cmd", cmd.raw);
             return ConvertResult(LogIoctlResult(devices.at(fd)->Ioctl2(cmd, buffer, inlineBuffer), cmd.raw));
         } catch (const std::out_of_range &) {
@@ -128,7 +128,7 @@ namespace skyline::service::nvdrv {
     NvResult Driver::Ioctl3(FileDescriptor fd, IoctlDescriptor cmd, span<u8> buffer, span<u8> inlineBuffer) {
         try {
             std::shared_lock lock(deviceMutex);
-            Logger::Debug("fd: {}, cmd: 0x{:X}, device: {}", fd, cmd.raw, devices.at(fd)->GetName());
+            LOGD("fd: {}, cmd: 0x{:X}, device: {}", fd, cmd.raw, devices.at(fd)->GetName());
             TRACE_EVENT("service", "Ioctl", "fd", fd, "cmd", cmd.raw);
             return ConvertResult(LogIoctlResult(devices.at(fd)->Ioctl3(cmd, buffer, inlineBuffer), cmd.raw));
         } catch (const std::out_of_range &) {
@@ -141,12 +141,12 @@ namespace skyline::service::nvdrv {
             std::unique_lock lock(deviceMutex);
             devices.erase(fd);
         } catch (const std::out_of_range &) {
-            Logger::Warn("Trying to close invalid fd: {}");
+            LOGW("Trying to close invalid fd: {}", fd);
         }
     }
 
     std::shared_ptr<kernel::type::KEvent> Driver::QueryEvent(FileDescriptor fd, u32 eventId) {
-        Logger::Debug("fd: {}, eventId: 0x{:X}, device: {}", fd, eventId, devices.at(fd)->GetName());
+        LOGD("fd: {}, eventId: 0x{:X}, device: {}", fd, eventId, devices.at(fd)->GetName());
 
         try {
             std::shared_lock lock(deviceMutex);

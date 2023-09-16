@@ -22,6 +22,7 @@ data class NativeSettings(
     var profilePictureValue : String,
     var systemLanguage : Int,
     var systemRegion : Int,
+    var isInternetEnabled : Boolean,
 
     // Audio
     var isAudioOutputDisabled : Boolean,
@@ -44,6 +45,7 @@ data class NativeSettings(
     var disableSubgroupShuffle : Boolean,
 
     // Debug
+    var logLevel : Int,
     var validationLayer : Boolean
 ) {
     constructor(context : Context, pref : EmulationSettings) : this(
@@ -52,6 +54,7 @@ data class NativeSettings(
         pref.profilePictureValue,
         pref.systemLanguage,
         pref.systemRegion,
+        pref.isInternetEnabled,
         pref.isAudioOutputDisabled,
         if (pref.gpuDriver == EmulationSettings.SYSTEM_GPU_DRIVER) "" else pref.gpuDriver,
         if (pref.gpuDriver == EmulationSettings.SYSTEM_GPU_DRIVER) "" else GpuDriverHelper.getLibraryName(context, pref.gpuDriver),
@@ -66,6 +69,7 @@ data class NativeSettings(
         pref.enableFastGpuReadbackHack,
         pref.enableFastReadbackWrites,
         pref.disableSubgroupShuffle,
+        pref.logLevel,
         BuildConfig.BUILD_TYPE != "release" && pref.validationLayer
     )
 
@@ -73,11 +77,4 @@ data class NativeSettings(
      * Updates settings in libskyline during emulation
      */
     external fun updateNative()
-
-    companion object {
-        /**
-         * Sets libskyline logger level to the given one
-         */
-        external fun setLogLevel(logLevel : Int)
-    }
 }

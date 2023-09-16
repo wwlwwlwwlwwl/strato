@@ -38,11 +38,11 @@ namespace skyline::kernel::type {
         pthread = pthread_self();
         std::array<char, 16> threadName{};
         if (int result{pthread_getname_np(pthread, threadName.data(), threadName.size())})
-            Logger::Warn("Failed to get the thread name: {}", strerror(result));
+            LOGW("Failed to get the thread name: {}", strerror(result));
 
         if (int result{pthread_setname_np(pthread, fmt::format("HOS-{}", id).c_str())})
-            Logger::Warn("Failed to set the thread name: {}", strerror(result));
-        Logger::UpdateTag();
+            LOGW("Failed to set the thread name: {}", strerror(result));
+        AsyncLogger::UpdateTag();
 
         if (!ctx.tpidrroEl0)
             ctx.tpidrroEl0 = parent->AllocateTlsSlot();
@@ -65,8 +65,8 @@ namespace skyline::kernel::type {
 
             if (threadName[0] != 'H' || threadName[1] != 'O' || threadName[2] != 'S' || threadName[3] != '-') {
                 if (int result{pthread_setname_np(pthread, threadName.data())})
-                    Logger::Warn("Failed to set the thread name: {}", strerror(result));
-                Logger::UpdateTag();
+                    LOGW("Failed to set the thread name: {}", strerror(result));
+                AsyncLogger::UpdateTag();
             }
 
             return;
@@ -182,8 +182,7 @@ namespace skyline::kernel::type {
 
             __builtin_unreachable();
         } catch (const std::exception &e) {
-            Logger::Error(e.what());
-            Logger::EmulationContext.Flush();
+            LOGE("{}", e.what());
             if (id) {
                 signal::BlockSignal({SIGINT});
                 state.process->Kill(false);
@@ -192,8 +191,7 @@ namespace skyline::kernel::type {
             std::longjmp(originalCtx, true);
         } catch (const signal::SignalException &e) {
             if (e.signal != SIGINT) {
-                Logger::Error(e.what());
-                Logger::EmulationContext.Flush();
+                LOGE("{}", e.what());
                 if (id) {
                     signal::BlockSignal({SIGINT});
                     state.process->Kill(false);

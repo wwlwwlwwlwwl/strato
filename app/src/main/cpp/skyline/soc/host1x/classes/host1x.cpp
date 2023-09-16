@@ -17,7 +17,7 @@ namespace skyline::soc::host1x {
                 IncrementSyncpointMethod incrSyncpoint{.raw = argument};
 
                 // incrSyncpoint.condition doesn't matter for Host1x class increments
-                Logger::Debug("Increment syncpoint: {}", incrSyncpoint.index);
+                LOGD("Increment syncpoint: {}", incrSyncpoint.index);
                 syncpoints.at(incrSyncpoint.index).Increment();
                 break;
             }
@@ -28,14 +28,14 @@ namespace skyline::soc::host1x {
 
             case WaitSyncpoint32MethodId: {
                 u32 syncpointId{static_cast<u8>(argument)};
-                Logger::Debug("Wait syncpoint: {}, thresh: {}", syncpointId, syncpointPayload);
+                LOGD("Wait syncpoint: {}, thresh: {}", syncpointId, syncpointPayload);
 
                 syncpoints.at(syncpointId).host.Wait(syncpointPayload, std::chrono::steady_clock::duration::max());
                 break;
             }
 
             default:
-                Logger::Error("Unknown host1x class method called: 0x{:X}", method);
+                LOGE("Unknown host1x class method called: 0x{:X}", method);
                 break;
         }
     }

@@ -18,6 +18,7 @@
 #include "skyline/audio.h"
 #include "skyline/input.h"
 #include "skyline/kernel/types/KProcess.h"
+#include "skyline/logger/logger.h"
 
 jint Fps; //!< An approximation of the amount of frames being submitted every second
 jfloat AverageFrametimeMs; //!< The average time it takes for a frame to be rendered and presented in milliseconds
@@ -54,17 +55,6 @@ static std::string GetTimeZoneName() {
     return "GMT";
 }
 
-extern "C" JNIEXPORT void Java_emu_skyline_SkylineApplication_initializeLog(
-    JNIEnv *env,
-    jobject,
-    jstring publicAppFilesPathJstring,
-    jint logLevel
-) {
-    skyline::JniString publicAppFilesPath(env, publicAppFilesPathJstring);
-    skyline::Logger::configLevel = static_cast<skyline::Logger::LogLevel>(logLevel);
-    skyline::Logger::LoaderContext.Initialize(publicAppFilesPath + "logs/loader.sklog");
-}
-
 extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
     JNIEnv *env,
     jobject instance,
@@ -88,7 +78,8 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
     std::shared_ptr<skyline::Settings> settings{std::make_shared<skyline::AndroidSettings>(env, settingsInstance)};
 
     skyline::JniString publicAppFilesPath(env, publicAppFilesPathJstring);
-    skyline::Logger::EmulationContext.Initialize(publicAppFilesPath + "logs/emulation.sklog");
+
+    skyline::AsyncLogger::Initialize(*settings->logLevel, publicAppFilesPath + "logs/emulation.log");
 
     auto start{std::chrono::steady_clock::now()};
 
@@ -119,15 +110,15 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
         SettingsWeak = settings;
         jvmManager->InitializeControllers();
 
-        skyline::Logger::DebugNoPrefix("Launching ROM {}", skyline::JniString(env, romUriJstring));
+        LOGDNF("Launching ROM {}", skyline::JniString(env, romUriJstring));
 
         os->Execute(romFd, static_cast<skyline::loader::RomFormat>(romType));
     } catch (std::exception &e) {
-        skyline::Logger::ErrorNoPrefix("An uncaught exception has occurred: {}", e.what());
+        LOGENF("An uncaught exception has occurred: {}", e.what());
     } catch (const skyline::signal::SignalException &e) {
-        skyline::Logger::ErrorNoPrefix("An uncaught exception has occurred: {}", e.what());
+        LOGENF("An uncaught signal exception has occurred: {}", e.what());
     } catch (...) {
-        skyline::Logger::ErrorNoPrefix("An unknown uncaught exception has occurred");
+        LOGENF("An unknown uncaught exception has occurred");
     }
 
     perfetto::TrackEvent::Flush();
@@ -135,9 +126,9 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
     InputWeak.reset();
 
     auto end{std::chrono::steady_clock::now()};
-    skyline::Logger::Write(skyline::Logger::LogLevel::Info, fmt::format("Emulation has ended in {}ms", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()));
+    LOGINF("Emulation has ended in {}ms", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 
-    skyline::Logger::EmulationContext.Finalize();
+    skyline::AsyncLogger::Finalize(true);
     close(romFd);
 }
 
@@ -249,8 +240,4 @@ extern "C" JNIEXPORT void JNICALL Java_emu_skyline_settings_NativeSettings_updat
     if (!settings)
         return; // We don't mind if we miss settings updates while settings haven't been initialized
     settings->Update();
-}
-
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_settings_NativeSettings_00024Companion_setLogLevel(JNIEnv *, jobject, jint logLevel) {
-    skyline::Logger::configLevel = static_cast<skyline::Logger::LogLevel>(logLevel);
 }

@@ -73,14 +73,14 @@ namespace skyline::kernel {
             }
 
             if (optimalCore != currentCore)
-                Logger::Debug("Load Balancing T{}: C{} -> C{}", thread->id, currentCore->id, optimalCore->id);
+                LOGD("Load Balancing T{}: C{} -> C{}", thread->id, currentCore->id, optimalCore->id);
             else
-                Logger::Debug("Load Balancing T{}: C{} (Late)", thread->id, currentCore->id);
+                LOGD("Load Balancing T{}: C{} (Late)", thread->id, currentCore->id);
 
             return *optimalCore;
         }
 
-        Logger::Debug("Load Balancing T{}: C{} (Early)", thread->id, currentCore->id);
+        LOGD("Load Balancing T{}: C{} (Early)", thread->id, currentCore->id);
 
         return *currentCore;
     }
@@ -116,8 +116,7 @@ namespace skyline::kernel {
         // Scan the queue for the same thread to prevent double insertion
         for (auto &residentThread : core.queue) {
             if (residentThread == thread) {
-                Logger::Error("T{} already exists in C{}", thread->id, core.id);
-                Logger::EmulationContext.Flush();
+                LOGE("T{} already exists in C{}", thread->id, core.id);
             }
         }
         #endif
@@ -274,7 +273,7 @@ namespace skyline::kernel {
                             (*it)->scheduleCondition.notify(); // We need to wake the thread at the front of the queue, if we were at the front previously
                     }
                 } else {
-                    Logger::Warn("T{} was not in C{}'s queue", thread->id, thread->coreId);
+                    LOGW("T{} was not in C{}'s queue", thread->id, thread->coreId);
                 }
             } else {
                 thread->insertThreadOnResume = false;

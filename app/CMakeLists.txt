@@ -16,28 +16,27 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -flto=full -fno-stack-protector -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "-Ofast")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-Ofast")
 
-# libcxx
+# libcxxabi
 set(ANDROID_STL "none")
+set(LIBCXXABI_INCLUDE_TESTS OFF)
+set(LIBCXXABI_ENABLE_SHARED OFF)
+set(LIBCXXABI_ENABLE_ASSERTIONS OFF)
+set(LIBCXXABI_LIBCXX_INCLUDES "${LIBCXX_TARGET_INCLUDE_DIRECTORY}" CACHE STRING "" FORCE)
+add_subdirectory("libraries/llvm/libcxxabi")
+
+# libcxx
 set(LIBCXX_INCLUDE_TESTS OFF)
 set(LIBCXX_INCLUDE_BENCHMARKS OFF)
 set(LIBCXX_INCLUDE_DOCS OFF)
-set(LIBCXX_ENABLE_SHARED FALSE)
-set(LIBCXX_ENABLE_ASSERTIONS FALSE)
-set(LIBCXX_STANDALONE_BUILD FALSE)
+set(LIBCXX_ENABLE_SHARED OFF)
+set(LIBCXX_ENABLE_ASSERTIONS OFF)
+set(LIBCXX_ENABLE_STATIC_ABI_LIBRARY ON)
 add_subdirectory("libraries/llvm/libcxx")
 link_libraries(cxx_static)
-get_target_property(LIBCXX_INCLUDE_COMPILE_OPTION cxx-headers INTERFACE_COMPILE_OPTIONS)
+get_target_property(LIBCXX_INCLUDE_COMPILE_OPTION cxx-headers INTERFACE_INCLUDE_DIRECTORIES)
 string(REGEX REPLACE "-I" "" LIBCXX_INCLUDE_DIRECTORY_LIST "${LIBCXX_INCLUDE_COMPILE_OPTION}")
 list(GET LIBCXX_INCLUDE_DIRECTORY_LIST 1 LIBCXX_TARGET_INCLUDE_DIRECTORY) # We just want the target include directory
 set_target_properties(cxx-headers PROPERTIES INTERFACE_COMPILE_OPTIONS -isystem${LIBCXX_TARGET_INCLUDE_DIRECTORY})
-
-# libcxxabi
-set(LIBCXXABI_INCLUDE_TESTS OFF)
-set(LIBCXXABI_ENABLE_SHARED FALSE)
-set(LIBCXXABI_STANDALONE_BUILD FALSE)
-set(LIBCXXABI_LIBCXX_INCLUDES "${LIBCXX_TARGET_INCLUDE_DIRECTORY}" CACHE STRING "" FORCE)
-add_subdirectory("libraries/llvm/libcxxabi")
-link_libraries(cxxabi_static)
 
 # Skyline's Boost fork
 set(Boost_USE_STATIC_LIBS ON)
@@ -97,6 +96,7 @@ set(USE_SANITIZERS OFF)
 set(USE_LAZY_LOAD_LIBS OFF)
 set(USE_AAUDIO OFF)
 set(BUNDLE_SPEEX ON)
+set(BUILD_TOOLS OFF)
 add_subdirectory("libraries/cubeb")
 include_directories(SYSTEM "libraries/cubeb/include")
 
@@ -125,7 +125,7 @@ include_directories("libraries/thread-pool")
 
 # Build Skyline with full debugging data and -Og for debug builds
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3 -glldb -gdwarf-5 -fno-omit-frame-pointer")
-# Build Skyline with full debugging data and some optimizations for reldebug builds, build speed is pioritised
+# Build Skyline with full debugging data and some optimizations for reldebug builds, build speed is prioritised
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O1 -g3 -glldb -gdwarf-5 -fno-omit-frame-pointer -fno-stack-protector")
 
 # Include headers from libraries as system headers to silence warnings from them
@@ -159,11 +159,11 @@ add_library(skyline SHARED
         ${source_DIR}/loader_jni.cpp
         ${source_DIR}/skyline/common.cpp
         ${source_DIR}/skyline/common/exception.cpp
-        ${source_DIR}/skyline/common/logger.cpp
         ${source_DIR}/skyline/common/signal.cpp
         ${source_DIR}/skyline/common/spin_lock.cpp
         ${source_DIR}/skyline/common/uuid.cpp
         ${source_DIR}/skyline/common/trace.cpp
+        ${source_DIR}/skyline/logger/logger.cpp
         ${source_DIR}/skyline/nce/guest.S
         ${source_DIR}/skyline/nce.cpp
         ${source_DIR}/skyline/jvm.cpp
@@ -174,8 +174,9 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/kernel/svc.cpp
         ${source_DIR}/skyline/kernel/types/KProcess.cpp
         ${source_DIR}/skyline/kernel/types/KThread.cpp
+        ${source_DIR}/skyline/kernel/types/KTransferMemory.cpp
         ${source_DIR}/skyline/kernel/types/KSharedMemory.cpp
-        ${source_DIR}/skyline/kernel/types/KPrivateMemory.cpp
+        ${source_DIR}/skyline/kernel/types/KMemory.cpp
         ${source_DIR}/skyline/kernel/types/KSyncObject.cpp
         ${source_DIR}/skyline/audio.cpp
         ${source_DIR}/skyline/gpu.cpp
@@ -305,6 +306,7 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/bcat/IDeliveryCacheFileService.cpp
         ${source_DIR}/skyline/services/bcat/IDeliveryCacheDirectoryService.cpp
         ${source_DIR}/skyline/services/bcat/IServiceCreator.cpp
+        ${source_DIR}/skyline/services/bcat/IDeliveryCacheProgressService.cpp
         ${source_DIR}/skyline/services/bt/IBluetoothUser.cpp
         ${source_DIR}/skyline/services/btm/IBtmUser.cpp
         ${source_DIR}/skyline/services/btm/IBtmUserCore.cpp
@@ -345,6 +347,7 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/fssrv/IStorage.cpp
         ${source_DIR}/skyline/services/fssrv/IDirectory.cpp
         ${source_DIR}/skyline/services/fssrv/IMultiCommitManager.cpp
+        ${source_DIR}/skyline/services/fssrv/ISaveDataInfoReader.cpp
         ${source_DIR}/skyline/services/nvdrv/INvDrvServices.cpp
         ${source_DIR}/skyline/services/nvdrv/driver.cpp
         ${source_DIR}/skyline/services/nvdrv/core/nvmap.cpp
@@ -376,6 +379,8 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/account/IAccountServiceForApplication.cpp
         ${source_DIR}/skyline/services/account/IManagerForApplication.cpp
         ${source_DIR}/skyline/services/account/IProfile.cpp
+        ${source_DIR}/skyline/services/account/IAsyncContext.cpp
+        ${source_DIR}/skyline/services/account/IAuthorizationRequest.cpp
         ${source_DIR}/skyline/services/friends/IServiceCreator.cpp
         ${source_DIR}/skyline/services/friends/IFriendService.cpp
         ${source_DIR}/skyline/services/friends/INotificationService.cpp
@@ -400,10 +405,17 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/mii/IStaticService.cpp
         ${source_DIR}/skyline/services/mii/IDatabaseService.cpp
         ${source_DIR}/skyline/services/olsc/IOlscServiceForApplication.cpp
+        ${source_DIR}/skyline/services/clkrst/IClkrstManager.cpp
+        ${source_DIR}/skyline/services/clkrst/IClkrstSession.cpp
+        ${source_DIR}/skyline/services/psm/IPsmServer.cpp
+        ${source_DIR}/skyline/services/psm/IPsmSession.cpp
+        ${source_DIR}/skyline/services/ts/IMeasurementServer.cpp
+        ${source_DIR}/skyline/services/ts/ISession.cpp
+        ${source_DIR}/skyline/services/ntc/IEnsureNetworkClockAvailabilityService.cpp
         )
 target_include_directories(skyline PRIVATE ${source_DIR}/skyline)
 # target_precompile_headers(skyline PRIVATE ${source_DIR}/skyline/common.h) # PCH will currently break Intellisense
 target_compile_options(skyline PRIVATE -Wall -Wno-unknown-attributes -Wno-c++20-extensions -Wno-c++17-extensions -Wno-c99-designator -Wno-reorder -Wno-missing-braces -Wno-unused-variable -Wno-unused-private-field -Wno-dangling-else -Wconversion -fsigned-bitfields)
 
 target_link_libraries(skyline PRIVATE shader_recompiler audio_core)
-target_link_libraries_system(skyline android perfetto fmt lz4_static tzcode vkma mbedcrypto opus Boost::intrusive Boost::container range-v3 adrenotools tsl::robin_map)
+target_link_libraries_system(skyline android perfetto fmt lz4_static tzcode vkma mbedcrypto opus Boost::intrusive Boost::container Boost::preprocessor range-v3 adrenotools tsl::robin_map)

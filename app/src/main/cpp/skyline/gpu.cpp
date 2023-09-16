@@ -24,11 +24,11 @@ namespace skyline::gpu {
         #endif
 
         auto instanceLayers{context.enumerateInstanceLayerProperties()};
-        if (Logger::configLevel >= Logger::LogLevel::Debug) {
+        if (AsyncLogger::CheckLogLevel(AsyncLogger::LogLevel::Debug)) {
             std::string layers;
             for (const auto &instanceLayer : instanceLayers)
-                layers += util::Format("\n* {} (Sv{}.{}.{}, Iv{}.{}.{}) - {}", instanceLayer.layerName, VK_API_VERSION_MAJOR(instanceLayer.specVersion), VK_API_VERSION_MINOR(instanceLayer.specVersion), VK_API_VERSION_PATCH(instanceLayer.specVersion), VK_API_VERSION_MAJOR(instanceLayer.implementationVersion), VK_API_VERSION_MINOR(instanceLayer.implementationVersion), VK_API_VERSION_PATCH(instanceLayer.implementationVersion), instanceLayer.description);
-            Logger::Debug("Vulkan Layers:{}", layers);
+                layers += fmt::format("\n* {} (Sv{}.{}.{}, Iv{}.{}.{}) - {}", instanceLayer.layerName, VK_API_VERSION_MAJOR(instanceLayer.specVersion), VK_API_VERSION_MINOR(instanceLayer.specVersion), VK_API_VERSION_PATCH(instanceLayer.specVersion), VK_API_VERSION_MAJOR(instanceLayer.implementationVersion), VK_API_VERSION_MINOR(instanceLayer.implementationVersion), VK_API_VERSION_PATCH(instanceLayer.implementationVersion), instanceLayer.description);
+            LOGD("Vulkan Layers:{}", layers);
         }
 
         for (const auto &requiredLayer : requiredLayers) {
@@ -45,11 +45,11 @@ namespace skyline::gpu {
         };
 
         auto instanceExtensions{context.enumerateInstanceExtensionProperties()};
-        if (Logger::configLevel >= Logger::LogLevel::Debug) {
+        if (AsyncLogger::CheckLogLevel(AsyncLogger::LogLevel::Debug)) {
             std::string extensions;
             for (const auto &instanceExtension : instanceExtensions)
-                extensions += util::Format("\n* {} (v{}.{}.{})", instanceExtension.extensionName, VK_API_VERSION_MAJOR(instanceExtension.specVersion), VK_API_VERSION_MINOR(instanceExtension.specVersion), VK_API_VERSION_PATCH(instanceExtension.specVersion));
-            Logger::Debug("Vulkan Instance Extensions:{}", extensions);
+                extensions += fmt::format("\n* {} (v{}.{}.{})", instanceExtension.extensionName, VK_API_VERSION_MAJOR(instanceExtension.specVersion), VK_API_VERSION_MINOR(instanceExtension.specVersion), VK_API_VERSION_PATCH(instanceExtension.specVersion));
+            LOGD("Vulkan Instance Extensions:{}", extensions);
         }
 
         for (const auto &requiredExtension : requiredInstanceExtensions) {
@@ -69,12 +69,12 @@ namespace skyline::gpu {
     }
 
     static VkBool32 DebugCallback(vk::DebugReportFlagsEXT flags, vk::DebugReportObjectTypeEXT objectType, u64 object, size_t location, i32 messageCode, const char *layerPrefix, const char *messageCStr, GPU *gpu) {
-        constexpr std::array<Logger::LogLevel, 5> severityLookup{
-            Logger::LogLevel::Info,  // VK_DEBUG_REPORT_INFORMATION_BIT_EXT
-            Logger::LogLevel::Warn,  // VK_DEBUG_REPORT_WARNING_BIT_EXT
-            Logger::LogLevel::Warn,  // VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT
-            Logger::LogLevel::Error, // VK_DEBUG_REPORT_ERROR_BIT_EXT
-            Logger::LogLevel::Debug, // VK_DEBUG_REPORT_DEBUG_BIT_EXT
+        constexpr std::array<AsyncLogger::LogLevel, 5> severityLookup{
+            AsyncLogger::LogLevel::Info,    // VK_DEBUG_REPORT_INFORMATION_BIT_EXT
+            AsyncLogger::LogLevel::Warning, // VK_DEBUG_REPORT_WARNING_BIT_EXT
+            AsyncLogger::LogLevel::Warning, // VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT
+            AsyncLogger::LogLevel::Error,   // VK_DEBUG_REPORT_ERROR_BIT_EXT
+            AsyncLogger::LogLevel::Debug,   // VK_DEBUG_REPORT_DEBUG_BIT_EXT
         };
 
         #define IGNORE_VALIDATION_C(string, function) \
@@ -199,7 +199,9 @@ namespace skyline::gpu {
             #undef IGNORE_TYPE
         }
 
-        Logger::Write(severityLookup.at(static_cast<size_t>(std::countr_zero(static_cast<u32>(flags)))), util::Format("Vk{}:{}[0x{:X}]:I{}:L{}: {}", layerPrefix, vk::to_string(vk::DebugReportObjectTypeEXT(objectType)), object, messageCode, location, message));
+        auto logLevel{severityLookup.at(static_cast<size_t>(std::countr_zero(static_cast<u32>(flags))))};
+        if (AsyncLogger::CheckLogLevel(logLevel))
+            AsyncLogger::LogAsync(logLevel, fmt::format("Vk{}:{}[0x{:X}]:I{}:L{}: {}", layerPrefix, vk::to_string(vk::DebugReportObjectTypeEXT(objectType)), object, messageCode, location, message));
 
         return VK_FALSE;
     }
@@ -311,18 +313,18 @@ namespace skyline::gpu {
         if (!traits.supportsGlobalPriority)
             queueCreateInfo.unlink<vk::DeviceQueueGlobalPriorityCreateInfoEXT>();
 
-        if (Logger::configLevel >= Logger::LogLevel::Info) {
+        if (AsyncLogger::CheckLogLevel(AsyncLogger::LogLevel::Info)) {
             std::string extensionString;
             for (const auto &extension : deviceExtensions)
-                extensionString += util::Format("\n* {} (v{}.{}.{})", extension.extensionName, VK_API_VERSION_MAJOR(extension.specVersion), VK_API_VERSION_MINOR(extension.specVersion), VK_API_VERSION_PATCH(extension.specVersion));
+                extensionString += fmt::format("\n* {} (v{}.{}.{})", extension.extensionName, VK_API_VERSION_MAJOR(extension.specVersion), VK_API_VERSION_MINOR(extension.specVersion), VK_API_VERSION_PATCH(extension.specVersion));
 
             std::string queueString;
             u32 familyIndex{};
             for (const auto &queueFamily : queueFamilies)
-                queueString += util::Format("\n* {}x{}{}{}{}{}: TSB{} MIG({}x{}x{}){}", queueFamily.queueCount, queueFamily.queueFlags & vk::QueueFlagBits::eGraphics ? 'G' : '-', queueFamily.queueFlags & vk::QueueFlagBits::eCompute ? 'C' : '-', queueFamily.queueFlags & vk::QueueFlagBits::eTransfer ? 'T' : '-', queueFamily.queueFlags & vk::QueueFlagBits::eSparseBinding ? 'S' : '-', queueFamily.queueFlags & vk::QueueFlagBits::eProtected ? 'P' : '-', queueFamily.timestampValidBits, queueFamily.minImageTransferGranularity.width, queueFamily.minImageTransferGranularity.height, queueFamily.minImageTransferGranularity.depth, familyIndex++ == vkQueueFamilyIndex ? " <--" : "");
+                queueString += fmt::format("\n* {}x{}{}{}{}{}: TSB{} MIG({}x{}x{}){}", queueFamily.queueCount, queueFamily.queueFlags & vk::QueueFlagBits::eGraphics ? 'G' : '-', queueFamily.queueFlags & vk::QueueFlagBits::eCompute ? 'C' : '-', queueFamily.queueFlags & vk::QueueFlagBits::eTransfer ? 'T' : '-', queueFamily.queueFlags & vk::QueueFlagBits::eSparseBinding ? 'S' : '-', queueFamily.queueFlags & vk::QueueFlagBits::eProtected ? 'P' : '-', queueFamily.timestampValidBits, queueFamily.minImageTransferGranularity.width, queueFamily.minImageTransferGranularity.height, queueFamily.minImageTransferGranularity.depth, familyIndex++ == vkQueueFamilyIndex ? " <--" : "");
 
             auto properties{deviceProperties2.get<vk::PhysicalDeviceProperties2>().properties};
-            Logger::Info("Vulkan Device:\nName: {}\nType: {}\nDriver ID: {}\nVulkan Version: {}.{}.{}\nDriver Version: {}.{}.{}\nQueues:{}\nExtensions:{}\nTraits:{}\nQuirks:{}",
+            LOGI("Vulkan Device:\nName: {}\nType: {}\nDriver ID: {}\nVulkan Version: {}.{}.{}\nDriver Version: {}.{}.{}\nQueues:{}\nExtensions:{}\nTraits:{}\nQuirks:{}",
                          properties.deviceName, vk::to_string(properties.deviceType),
                          vk::to_string(deviceProperties2.get<vk::PhysicalDeviceDriverProperties>().driverID),
                          VK_API_VERSION_MAJOR(properties.apiVersion), VK_API_VERSION_MINOR(properties.apiVersion), VK_API_VERSION_PATCH(properties.apiVersion),
@@ -357,7 +359,7 @@ namespace skyline::gpu {
 
             if (!libvulkanHandle) {
                 char *error = dlerror();
-                Logger::Warn("Failed to load custom Vulkan driver {}/{}: {}", *state.settings->gpuDriver, *state.settings->gpuDriverLibraryName, error ? error : "");
+                LOGW("Failed to load custom Vulkan driver {}/{}: {}", *state.settings->gpuDriver, *state.settings->gpuDriverLibraryName, error ? error : "");
             }
         }
 
@@ -375,7 +377,7 @@ namespace skyline::gpu {
 
             if (!libvulkanHandle) {
                 char *error = dlerror();
-                Logger::Warn("Failed to load builtin Vulkan driver: {}", error ? error : "");
+                LOGW("Failed to load builtin Vulkan driver: {}", error ? error : "");
             }
 
             if (!libvulkanHandle)
@@ -414,6 +416,6 @@ namespace skyline::gpu {
         if (!*state.settings->disableShaderCache)
             graphicsPipelineCacheManager.emplace(state,
                                                  state.os->publicAppFilesPath + "graphics_pipeline_cache/" + titleId);
-        graphicsPipelineManager.emplace(*this);
+        graphicsPipelineManager.emplace(*this, *state.jvm);
     }
 }

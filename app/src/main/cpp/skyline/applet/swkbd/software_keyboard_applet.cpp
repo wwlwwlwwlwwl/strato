@@ -73,7 +73,7 @@ namespace skyline::applet::swkbd {
 
     Result SoftwareKeyboardApplet::Start() {
         if (mode != service::applet::LibraryAppletMode::AllForeground) {
-            Logger::Warn("Stubbing out InlineKeyboard!");
+            LOGW("Stubbing out InlineKeyboard!");
             SendResult();
             return {};
         }
@@ -92,7 +92,7 @@ namespace skyline::applet::swkbd {
             else
                 return configSpan.as<KeyboardConfigVB>();
         }();
-        Logger::Debug("Swkbd Config:\n* KeyboardMode: {}\n* InvalidCharFlags: {:#09b}\n* TextMaxLength: {}\n* TextMinLength: {}\n* PasswordMode: {}\n* InputFormMode: {}\n* IsUseNewLine: {}\n* IsUseTextCheck: {}",
+        LOGD("Swkbd Config:\n* KeyboardMode: {}\n* InvalidCharFlags: {:#09b}\n* TextMaxLength: {}\n* TextMinLength: {}\n* PasswordMode: {}\n* InputFormMode: {}\n* IsUseNewLine: {}\n* IsUseTextCheck: {}",
                       static_cast<u32>(config.commonConfig.keyboardMode),
                       config.commonConfig.invalidCharFlags.raw,
                       config.commonConfig.textMaxLength,
@@ -117,7 +117,7 @@ namespace skyline::applet::swkbd {
 
         dialog = state.jvm->ShowKeyboard(*reinterpret_cast<JvmManager::KeyboardConfig *>(&config), currentText);
         if (!dialog) {
-            Logger::Warn("Couldn't show keyboard dialog, using default text");
+            LOGW("Couldn't show keyboard dialog, using default text");
             currentResult = CloseResult::Enter;
             currentText = FillDefaultText(config.commonConfig.textMinLength, config.commonConfig.textMaxLength);
         } else {
@@ -171,9 +171,9 @@ namespace skyline::applet::swkbd {
                     WriteStringToSpan(chars, std::u16string(validationResult.chars.data()), true);
                     std::string message{reinterpret_cast<char *>(chars.data())};
                     if (validationResult.result == TextCheckResult::ShowFailureDialog)
-                        Logger::Warn("Sending default text despite being rejected by the guest with message: \"{}\"", message);
+                        LOGW("Sending default text despite being rejected by the guest with message: \"{}\"", message);
                     else
-                        Logger::Debug("Guest asked to confirm default text with message: \"{}\"", message);
+                        LOGD("Guest asked to confirm default text with message: \"{}\"", message);
                     PushNormalDataAndSignal(std::make_shared<service::am::ObjIStorage<OutputResult>>(state, manager, OutputResult{CloseResult::Enter, currentText, config.commonConfig.isUseUtf8}));
                 }
             }

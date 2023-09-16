@@ -16,13 +16,13 @@ namespace skyline::service::am {
           messageEvent(std::make_shared<type::KEvent>(state, false)),
           defaultDisplayResolutionChangeEvent(std::make_shared<type::KEvent>(state, false)) {
         operationMode = static_cast<OperationMode>(*state.settings->isDocked);
-        Logger::Info("Switch to mode: {}", static_cast<bool>(operationMode) ? "Docked" : "Handheld");
+        LOGI("Switch to mode: {}", static_cast<bool>(operationMode) ? "Docked" : "Handheld");
         QueueMessage(Message::FocusStateChange);
     }
 
     Result ICommonStateGetter::GetEventHandle(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         auto handle{state.process->InsertItem(messageEvent)};
-        Logger::Debug("Applet Event Handle: 0x{:X}", handle);
+        LOGD("Applet Event Handle: 0x{:X}", handle);
         response.copyHandles.push_back(handle);
         return {};
     }
@@ -78,7 +78,7 @@ namespace skyline::service::am {
     Result ICommonStateGetter::GetDefaultDisplayResolutionChangeEvent(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         // TODO: Implement properly when we support listeners for settings
         auto handle{state.process->InsertItem(defaultDisplayResolutionChangeEvent)};
-        Logger::Debug("Default Display Resolution Change Event Handle: 0x{:X}", handle);
+        LOGD("Default Display Resolution Change Event Handle: 0x{:X}", handle);
 
         response.copyHandles.push_back(handle);
         return {};
@@ -90,10 +90,10 @@ namespace skyline::service::am {
             case CpuBoostMode::Normal:
             case CpuBoostMode::FastLoad:
             case CpuBoostMode::PowerSaving:
-                Logger::Info("Set CPU boost mode to {}", ToString(cpuBoostMode));
+                LOGI("Set CPU boost mode to {}", ToString(cpuBoostMode));
                 return {};
             default:
-                Logger::Error("Unknown CPU boost mode value: 0x{:X}", cpuBoostMode);
+                LOGE("Unknown CPU boost mode value: 0x{:X}", cpuBoostMode);
                 return result::InvalidParameters;
         }
         return {};

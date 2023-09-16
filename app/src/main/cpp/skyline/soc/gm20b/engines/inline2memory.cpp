@@ -20,7 +20,7 @@ namespace skyline::soc::gm20b::engine {
         if (state.launchDma.completion == RegisterState::DmaCompletionType::ReleaseSemaphore)
             throw exception("Semaphore release on I2M completion is not supported!");
 
-        Logger::Debug("range: 0x{:X} -> 0x{:X}", u64{state.offsetOut}, u64{state.offsetOut} + buffer.size() * 0x4);
+        LOGD("range: 0x{:X} -> 0x{:X}", u64{state.offsetOut}, u64{state.offsetOut} + buffer.size() * 0x4);
         if (state.launchDma.layout == RegisterState::DmaDstMemoryLayout::Pitch) {
             channelCtx.channelSequenceNumber++;
 
@@ -93,7 +93,7 @@ namespace skyline::soc::gm20b::engine {
     Inline2Memory::Inline2Memory(const DeviceState &state, ChannelContext &channelCtx) : backend{state, channelCtx} {}
 
     __attribute__((always_inline)) void Inline2Memory::CallMethod(u32 method, u32 argument) {
-        Logger::Verbose("Called method in I2M: 0x{:X} args: 0x{:X}", method, argument);
+        LOGV("Called method in I2M: 0x{:X} args: 0x{:X}", method, argument);
 
         HandleMethod(method, argument);
     }

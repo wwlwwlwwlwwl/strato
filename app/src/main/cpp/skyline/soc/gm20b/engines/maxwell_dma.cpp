@@ -18,7 +18,7 @@ namespace skyline::soc::gm20b::engine {
           copyCache() {}
 
     __attribute__((always_inline)) void MaxwellDma::CallMethod(u32 method, u32 argument) {
-        Logger::Verbose("Called method in Maxwell DMA: 0x{:X} args: 0x{:X}", method, argument);
+        LOGV("Called method in Maxwell DMA: 0x{:X} args: 0x{:X}", method, argument);
 
         HandleMethod(method, argument);
     }
@@ -39,7 +39,7 @@ namespace skyline::soc::gm20b::engine {
     void MaxwellDma::DmaCopy() {
         if (registers.launchDma->multiLineEnable) {
             if (registers.launchDma->remapEnable) [[unlikely]] {
-                Logger::Warn("Remapped DMA copies are unimplemented!");
+                LOGW("Remapped DMA copies are unimplemented!");
                 return;
             }
 
@@ -50,7 +50,7 @@ namespace skyline::soc::gm20b::engine {
                 if (registers.launchDma->srcMemoryLayout == Registers::LaunchDma::MemoryLayout::Pitch) [[likely]] {
                     CopyPitchToPitch();
                 } else {
-                    Logger::Warn("BlockLinear to BlockLinear DMA copies are unimplemented!");
+                    LOGW("BlockLinear to BlockLinear DMA copies are unimplemented!");
                 }
             } else if (registers.launchDma->srcMemoryLayout == Registers::LaunchDma::MemoryLayout::BlockLinear) {
                 CopyBlockLinearToPitch();
@@ -60,7 +60,7 @@ namespace skyline::soc::gm20b::engine {
         } else {
             // 1D copy
             // TODO: implement swizzled 1D copies based on VMM 'kind'
-            Logger::Debug("src: 0x{:X} dst: 0x{:X} size: 0x{:X}", u64{*registers.offsetIn}, u64{*registers.offsetOut}, *registers.lineLengthIn);
+            LOGD("src: 0x{:X} dst: 0x{:X} size: 0x{:X}", u64{*registers.offsetIn}, u64{*registers.offsetOut}, *registers.lineLengthIn);
 
             size_t dstBpp{registers.launchDma->remapEnable ? static_cast<size_t>(registers.remapComponents->NumDstComponents() * registers.remapComponents->ComponentSize()) : 1};
 
@@ -77,7 +77,7 @@ namespace skyline::soc::gm20b::engine {
                     for (auto mapping : dstMappings)
                         interconnect.Clear(mapping, *registers.remapConstA);
                 } else {
-                    Logger::Warn("Remapped DMA copies are unimplemented!");
+                    LOGW("Remapped DMA copies are unimplemented!");
                 }
             } else {
                 if (srcMappings.size() != 1 || dstMappings.size() != 1) [[unlikely]]
@@ -145,7 +145,7 @@ namespace skyline::soc::gm20b::engine {
 
     void MaxwellDma::CopyBlockLinearToPitch() {
         if (registers.srcSurface->blockSize.Width() != 1) [[unlikely]] {
-            Logger::Error("Blocklinear surfaces with a non-one block width are unsupported on the Tegra X1: {}", registers.srcSurface->blockSize.Width());
+            LOGE("Blocklinear surfaces with a non-one block width are unsupported on the Tegra X1: {}", registers.srcSurface->blockSize.Width());
             return;
         }
 
@@ -182,7 +182,7 @@ namespace skyline::soc::gm20b::engine {
             }
         }};
 
-        Logger::Debug("{}x{}x{}@0x{:X} -> {}x{}x{}@0x{:X}", srcDimensions.width, srcDimensions.height, srcDimensions.depth, srcLayerAddress, dstDimensions.width, dstDimensions.height, dstDimensions.depth, u64{*registers.offsetOut});
+        LOGD("{}x{}x{}@0x{:X} -> {}x{}x{}@0x{:X}", srcDimensions.width, srcDimensions.height, srcDimensions.depth, srcLayerAddress, dstDimensions.width, dstDimensions.height, dstDimensions.depth, u64{*registers.offsetOut});
 
         if (srcMappings.size() != 1 || dstMappings.size() != 1) [[unlikely]]
             HandleSplitCopy(srcMappings, dstMappings, srcLayerStride, dstSize, copyFunc);
@@ -192,7 +192,7 @@ namespace skyline::soc::gm20b::engine {
 
     void MaxwellDma::CopyPitchToBlockLinear() {
         if (registers.dstSurface->blockSize.Width() != 1) [[unlikely]] {
-            Logger::Error("Blocklinear surfaces with a non-one block width are unsupported on the Tegra X1: {}", registers.srcSurface->blockSize.Width());
+            LOGE("Blocklinear surfaces with a non-one block width are unsupported on the Tegra X1: {}", registers.srcSurface->blockSize.Width());
             return;
         }
 
@@ -209,7 +209,7 @@ namespace skyline::soc::gm20b::engine {
         // Get destination address
         auto dstMappings{channelCtx.asCtx->gmmu.TranslateRange(*registers.offsetOut, dstLayerStride)};
 
-        Logger::Debug("{}x{}x{}@0x{:X} -> {}x{}x{}@0x{:X}", srcDimensions.width, srcDimensions.height, srcDimensions.depth, u64{*registers.offsetIn}, dstDimensions.width, dstDimensions.height, dstDimensions.depth, dstLayerAddress);
+        LOGD("{}x{}x{}@0x{:X} -> {}x{}x{}@0x{:X}", srcDimensions.width, srcDimensions.height, srcDimensions.depth, u64{*registers.offsetIn}, dstDimensions.width, dstDimensions.height, dstDimensions.depth, dstLayerAddress);
 
         auto copyFunc{[&](u8 *src, u8 *dst) {
             if ((util::AlignDown(srcDimensions.width, 64) != util::AlignDown(dstDimensions.width, 64))
@@ -239,21 +239,21 @@ namespace skyline::soc::gm20b::engine {
 
     void MaxwellDma::ReleaseSemaphore() {
         if (registers.launchDma->reductionEnable) [[unlikely]]
-            Logger::Warn("Semaphore reduction is unimplemented!");
+            LOGW("Semaphore reduction is unimplemented!");
 
         u64 address{registers.semaphore->address};
         u64 payload{registers.semaphore->payload};
         switch (registers.launchDma->semaphoreType) {
             case Registers::LaunchDma::SemaphoreType::ReleaseOneWordSemaphore:
                 channelCtx.asCtx->gmmu.Write(address, payload);
-                Logger::Debug("address: 0x{:X} payload: {}", address, payload);
+                LOGD("address: 0x{:X} payload: {}", address, payload);
                 break;
             case Registers::LaunchDma::SemaphoreType::ReleaseFourWordSemaphore: {
                 // Write timestamp first to ensure correct ordering
                 u64 timestamp{GetGpuTimeTicks()};
                 channelCtx.asCtx->gmmu.Write(address + 8, timestamp);
                 channelCtx.asCtx->gmmu.Write(address, payload);
-                Logger::Debug("address: 0x{:X} payload: {} timestamp: {}", address, payload, timestamp);
+                LOGD("address: 0x{:X} payload: {} timestamp: {}", address, payload, timestamp);
                 break;
             }
             default:

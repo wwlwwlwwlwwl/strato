@@ -59,10 +59,10 @@ namespace skyline::loader {
 
                     executableSymbols.emplace_back(std::string{symbolName}, hle::EntryExitHook{
                         .entry = [](const DeviceState &, const hle::HookedSymbol &symbol) {
-                            Logger::Error("Entering \"{}\" ({})", symbol.prettyName, symbol.name);
+                            LOGE("Entering \"{}\" ({})", symbol.prettyName, symbol.name);
                         },
                         .exit = [](const DeviceState &, const hle::HookedSymbol &symbol) {
-                            Logger::Error("Exiting \"{}\"", symbol.prettyName);
+                            LOGE("Exiting \"{}\"", symbol.prettyName);
                         },
                     }, &symbol.st_value);
                     #endif
@@ -77,10 +77,10 @@ namespace skyline::loader {
 
                     executableSymbols.emplace_back(std::string{symbolName}, hle::EntryExitHook{
                         .entry = [](const DeviceState &, const hle::HookedSymbol &symbol) {
-                            Logger::Error("Entering \"{}\" ({})", symbol.prettyName, symbol.name);
+                            LOGE("Entering \"{}\" ({})", symbol.prettyName, symbol.name);
                         },
                         .exit = [](const DeviceState &, const hle::HookedSymbol &symbol) {
-                            Logger::Error("Exiting \"{}\"", symbol.prettyName);
+                            LOGE("Exiting \"{}\"", symbol.prettyName);
                         },
                     }, &symbol.st_value);
             }
@@ -89,21 +89,25 @@ namespace skyline::loader {
             hookSize = util::AlignUp(state.nce->GetHookSectionSize(executableSymbols), PAGE_SIZE);
         }
 
-        auto patchType{process->memory.addressSpaceType == memory::AddressSpaceType::AddressSpace36Bit ? memory::states::Heap : memory::states::Reserved};
-        process->NewHandle<kernel::type::KPrivateMemory>(span<u8>{base, patch.size + hookSize}, memory::Permission{false, false, false}, patchType); // ---
-        Logger::Debug("Successfully mapped section .patch @ 0x{:X}, Size = 0x{:X}", base, patch.size);
+        if (process->memory.addressSpaceType == memory::AddressSpaceType::AddressSpace36Bit) {
+            process->memory.MapHeapMemory(span<u8>{base, patch.size + hookSize}); // ---
+            process->memory.SetRegionPermission(span<u8>{base, patch.size + hookSize}, memory::Permission{false, false, false});
+        } else {
+            process->memory.Reserve(span<u8>{base, patch.size + hookSize}); // ---
+        }
+        LOGD("Successfully mapped section .patch @ {}, Size = 0x{:X}", fmt::ptr(base), patch.size);
         if (hookSize > 0)
-            Logger::Debug("Successfully mapped section .hook @ 0x{:X}, Size = 0x{:X}", base + patch.size, hookSize);
+            LOGD("Successfully mapped section .hook @ {}, Size = 0x{:X}", fmt::ptr(base + patch.size), hookSize);
 
         u8 *executableBase{base + patch.size + hookSize};
-        process->NewHandle<kernel::type::KPrivateMemory>(span<u8>{executableBase + executable.text.offset, textSize}, memory::Permission{true, false, true}, memory::states::CodeStatic); // R-X
-        Logger::Debug("Successfully mapped section .text @ 0x{:X}, Size = 0x{:X}", executableBase, textSize);
+        process->memory.MapCodeMemory(span<u8>{executableBase + executable.text.offset, textSize}, memory::Permission{true, false, true}); // R-X
+        LOGD("Successfully mapped section .text @ {}, Size = 0x{:X}", fmt::ptr(executableBase), textSize);
 
-        process->NewHandle<kernel::type::KPrivateMemory>(span<u8>{executableBase + executable.ro.offset, roSize}, memory::Permission{true, false, false}, memory::states::CodeStatic); // R--
-        Logger::Debug("Successfully mapped section .rodata @ 0x{:X}, Size = 0x{:X}", executableBase + executable.ro.offset, roSize);
+        process->memory.MapCodeMemory(span<u8>{executableBase + executable.ro.offset, roSize}, memory::Permission{true, false, false}); // R--
+        LOGD("Successfully mapped section .rodata @ {}, Size = 0x{:X}", fmt::ptr(executableBase + executable.ro.offset), roSize);
 
-        process->NewHandle<kernel::type::KPrivateMemory>(span<u8>{executableBase + executable.data.offset, dataSize}, memory::Permission{true, true, false}, memory::states::CodeMutable); // RW-
-        Logger::Debug("Successfully mapped section .data + .bss @ 0x{:X}, Size = 0x{:X}", executableBase + executable.data.offset, dataSize);
+        process->memory.MapMutableCodeMemory(span<u8>{executableBase + executable.data.offset, dataSize}); // RW-
+        LOGD("Successfully mapped section .data + .bss @ {}, Size = 0x{:X}", fmt::ptr(executableBase + executable.data.offset), dataSize);
 
         size_t size{patch.size + hookSize + textSize + roSize + dataSize};
         {
@@ -130,7 +134,6 @@ namespace skyline::loader {
         std::memcpy(executableBase + executable.ro.offset, executable.ro.contents.data(), roSize);
         std::memcpy(executableBase + executable.data.offset, executable.data.contents.data(), dataSize - executable.bssSize);
 
-        Logger::EmulationContext.Flush();
         return {base, size, executableBase + executable.text.offset};
     }
 

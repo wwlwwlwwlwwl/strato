@@ -18,6 +18,12 @@
             app:key="title_keys"
             app:title="@string/title_keys"
             app:useSimpleSummaryProvider="true" />
+        <emu.skyline.preference.ImportExportSavesPreference
+            app:key="save_data_manager"
+            app:title="@string/save_data_manager" />
+        <emu.skyline.preference.FirmwareImportPreference
+            app:key="firmware"
+            app:title="@string/firmware" />
     </PreferenceCategory>
     <PreferenceCategory
         android:key="category_appearance"
@@ -57,5 +63,10 @@
             android:summaryOn="@string/select_action_desc_on"
             app:key="select_action"
             app:title="@string/select_action" />
+        <emu.skyline.preference.RefreshSwitchPreferenceCompat
+            android:defaultValue="false"
+            android:summaryOff="@string/filter_invalid_files_desc_off"
+            android:summaryOn="@string/filter_invalid_files_desc_on"
+            app:key="filter_invalid_files" />
     </PreferenceCategory>
 </androidx.preference.PreferenceScreen>

@@ -17,7 +17,7 @@ namespace skyline::service::audio {
            impl{std::make_shared<AudioCore::AudioOut::Out>(state.audio->audioSystem, *state.audio->audioOutManager, &releaseEventWrapper, sessionId)} {
 
         if (impl->GetSystem().Initialize(std::string{deviceName}, parameters, handle, appletResourceUserId).IsError())
-            Logger::Warn("Failed to initialise Audio Out");
+            LOGW("Failed to initialise Audio Out");
     }
 
     IAudioOut::~IAudioOut() {
@@ -46,7 +46,7 @@ namespace skyline::service::audio {
 
     Result IAudioOut::RegisterBufferEvent(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         auto handle{state.process->InsertItem(releaseEvent)};
-        Logger::Debug("Buffer Release Event Handle: 0x{:X}", handle);
+        LOGD("Buffer Release Event Handle: 0x{:X}", handle);
         response.copyHandles.push_back(handle);
         return {};
     }

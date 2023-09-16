@@ -169,7 +169,7 @@ namespace skyline::soc::gm20b::engine::maxwell3d {
                         if (begin.instanceId == Registers::Begin::InstanceId::Subsequent) {
                             if (deferredDraw.drawTopology != begin.op &&
                                 registers.primitiveTopologyControl->override == type::PrimitiveTopologyControl::Override::UseTopologyInBeginMethods)
-                                Logger::Warn("Vertex topology changed partway through instanced draw!");
+                                LOGW("Vertex topology changed partway through instanced draw!");
 
                             deferredDraw.instanceCount++;
                         } else {
@@ -186,12 +186,12 @@ namespace skyline::soc::gm20b::engine::maxwell3d {
                     // Draws here can be ignored since they're just repeats of the original instanced draw
                     ENGINE_CASE(drawVertexArray, {
                         if (!redundant)
-                            Logger::Warn("Vertex count changed partway through instanced draw!");
+                            LOGW("Vertex count changed partway through instanced draw!");
                         return;
                     })
                     ENGINE_CASE(drawIndexBuffer, {
                         if (!redundant)
-                            Logger::Warn("Index count changed partway through instanced draw!");
+                            LOGW("Index count changed partway through instanced draw!");
                         return;
                     })
 
@@ -263,7 +263,7 @@ namespace skyline::soc::gm20b::engine::maxwell3d {
             })
 
             ENGINE_CASE(syncpointAction, {
-                Logger::Debug("Increment syncpoint: {}", static_cast<u16>(syncpointAction.id));
+                LOGD("Increment syncpoint: {}", static_cast<u16>(syncpointAction.id));
                 channelCtx.executor.AddDeferredAction([=, syncpoints = &this->syncpoints, index = syncpointAction.id]() {
                     syncpoints->at(index).host.Increment();
                 });
@@ -395,7 +395,7 @@ namespace skyline::soc::gm20b::engine::maxwell3d {
 
             ENGINE_STRUCT_CASE(semaphore, info, {
                 if (info.reductionEnable)
-                    Logger::Warn("Semaphore reduction is unimplemented!");
+                    LOGW("Semaphore reduction is unimplemented!");
 
                 switch (info.op) {
                     case type::SemaphoreInfo::Op::Release:
@@ -419,14 +419,14 @@ namespace skyline::soc::gm20b::engine::maxwell3d {
                                 break;
 
                             default:
-                                Logger::Debug("Unsupported semaphore counter type: 0x{:X}", static_cast<u8>(info.counterType));
+                                LOGD("Unsupported semaphore counter type: 0x{:X}", static_cast<u8>(info.counterType));
                                 break;
                         }
                         break;
                     }
 
                     default:
-                        Logger::Warn("Unsupported semaphore operation: 0x{:X}", static_cast<u8>(info.op));
+                        LOGW("Unsupported semaphore operation: 0x{:X}", static_cast<u8>(info.op));
                         break;
                 }
             })
@@ -472,7 +472,7 @@ namespace skyline::soc::gm20b::engine::maxwell3d {
         switch (semaphore.info.structureSize) {
             case type::SemaphoreInfo::StructureSize::OneWord:
                 channelCtx.asCtx->gmmu.Write(semaphore.address, static_cast<u32>(result));
-                Logger::Debug("address: 0x{:X} payload: {}", semaphore.address, result);
+                LOGD("address: 0x{:X} payload: {}", semaphore.address, result);
                 break;
 
             case type::SemaphoreInfo::StructureSize::FourWords: {
@@ -480,7 +480,7 @@ namespace skyline::soc::gm20b::engine::maxwell3d {
                 u64 timestamp{GetGpuTimeTicks()};
                 channelCtx.asCtx->gmmu.Write(semaphore.address + 8, timestamp);
                 channelCtx.asCtx->gmmu.Write(semaphore.address, result);
-                Logger::Debug("address: 0x{:X} payload: {} timestamp: {}", semaphore.address, result, timestamp);
+                LOGD("address: 0x{:X} payload: {} timestamp: {}", semaphore.address, result, timestamp);
 
                 break;
             }
@@ -500,7 +500,7 @@ namespace skyline::soc::gm20b::engine::maxwell3d {
     }
 
     __attribute__((always_inline)) void Maxwell3D::CallMethod(u32 method, u32 argument) {
-        Logger::Verbose("Called method in Maxwell 3D: 0x{:X} args: 0x{:X}", method, argument);
+        LOGV("Called method in Maxwell 3D: 0x{:X} args: 0x{:X}", method, argument);
 
         HandleMethod(method, argument);
     }

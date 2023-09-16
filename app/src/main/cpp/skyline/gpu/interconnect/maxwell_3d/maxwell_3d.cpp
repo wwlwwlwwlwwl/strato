@@ -233,7 +233,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
                 bool partialClear{!(clearSurface.rEnable && clearSurface.gEnable && clearSurface.bEnable && clearSurface.aEnable)};
                 if (!(view->range.aspectMask & vk::ImageAspectFlagBits::eColor))
-                    Logger::Warn("Colour RT used in clear lacks colour aspect"); // TODO: Drop this check after texman rework
+                    LOGW("Colour RT used in clear lacks colour aspect"); // TODO: Drop this check after texman rework
 
 
                 if (partialClear) {
@@ -271,7 +271,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
                 };
 
                 if (!clearAspectMask) {
-                    Logger::Warn("Depth stencil RT used in clear lacks depth or stencil aspects"); // TODO: Drop this check after texman rework
+                    LOGW("Depth stencil RT used in clear lacks depth or stencil aspects"); // TODO: Drop this check after texman rework
                     return;
                 }
 
@@ -420,7 +420,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
     void Maxwell3D::Query(soc::gm20b::IOVA address, engine::SemaphoreInfo::CounterType type, std::optional<u64> timestamp) {
         if (type != engine::SemaphoreInfo::CounterType::SamplesPassed) {
-            Logger::Error("Unsupported query type: {}", static_cast<u32>(type));
+            LOGE("Unsupported query type: {}", static_cast<u32>(type));
             return;
         }
 
@@ -429,7 +429,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
     void Maxwell3D::ResetCounter(engine::ClearReportValue::Type type) {
         if (type != engine::ClearReportValue::Type::ZPassPixelCount) {
-            Logger::Debug("Unsupported query type: {}", static_cast<u32>(type));
+            LOGD("Unsupported query type: {}", static_cast<u32>(type));
             return;
         }
 

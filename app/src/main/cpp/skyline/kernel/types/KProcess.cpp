@@ -3,17 +3,18 @@
 
 #include <nce.h>
 #include <os.h>
+#include <jvm.h>
 #include <common/trace.h>
 #include <kernel/results.h>
 #include "KProcess.h"
 
 namespace skyline::kernel::type {
-    KProcess::TlsPage::TlsPage(std::shared_ptr<KPrivateMemory> memory) : memory(std::move(memory)) {}
+    KProcess::TlsPage::TlsPage(u8 *memory) : memory(memory) {}
 
     u8 *KProcess::TlsPage::ReserveSlot() {
         if (index == constant::TlsSlots)
             return nullptr;
-        return memory->guest.data() + (constant::TlsSlotSize * index++);
+        return memory + (constant::TlsSlotSize * index++);
     }
 
     KProcess::KProcess(const DeviceState &state) : memory(state), KSyncObject(state, KType::KProcess) {}
@@ -26,8 +27,10 @@ namespace skyline::kernel::type {
     }
 
     void KProcess::Kill(bool join, bool all, bool disableCreation) {
-        Logger::Warn("Killing {}{}KProcess{}", join ? "and joining " : "", all ? "all threads in " : "HOS-0 in ", disableCreation ? " with new thread creation disabled" : "");
-        Logger::EmulationContext.Flush();
+        LOGW("Killing {}{}KProcess{}", join ? "and joining " : "", all ? "all threads in " : "HOS-1 in ", disableCreation ? " with new thread creation disabled" : "");
+        // disableCreation is set only when gracefully exiting, it being false means an exception/crash occurred
+        if (!disableCreation)
+            state.jvm->reportCrash();
 
         bool expected{false};
         if (!join && !alreadyKilled.compare_exchange_strong(expected, true))
@@ -49,8 +52,8 @@ namespace skyline::kernel::type {
 
     void KProcess::InitializeHeapTls() {
         constexpr size_t DefaultHeapSize{0x200000};
-        heap = std::make_shared<KPrivateMemory>(state, 0, span<u8>{state.process->memory.heap.data(), DefaultHeapSize}, memory::Permission{true, true, false}, memory::states::Heap);
-        InsertItem(heap); // Insert it into the handle table so GetMemoryObject will contain it
+        memory.MapHeapMemory(span<u8>{state.process->memory.heap.data(), DefaultHeapSize});
+        memory.processHeapSize = DefaultHeapSize;
         tlsExceptionContext = AllocateTlsSlot();
     }
 
@@ -61,8 +64,26 @@ namespace skyline::kernel::type {
             if ((slot = tlsPage->ReserveSlot()))
                 return slot;
 
-        slot = tlsPages.empty() ? reinterpret_cast<u8 *>(memory.tlsIo.data()) : ((*(tlsPages.end() - 1))->memory->guest.data() + constant::PageSize);
-        auto tlsPage{std::make_shared<TlsPage>(std::make_shared<KPrivateMemory>(state, 0, span<u8>{slot, constant::PageSize}, memory::Permission(true, true, false), memory::states::ThreadLocal))};
+        bool isAllocated{};
+
+        u8 *pageCandidate{state.process->memory.tlsIo.data()};
+        std::pair<u8 *, ChunkDescriptor> chunk;
+        while (state.process->memory.tlsIo.contains(span<u8>(pageCandidate, constant::PageSize))) {
+            chunk = memory.GetChunk(pageCandidate).value();
+
+            if (chunk.second.state == memory::states::Unmapped) {
+                memory.MapThreadLocalMemory(span<u8>{pageCandidate, constant::PageSize});
+                isAllocated = true;
+                break;
+            } else {
+                pageCandidate = chunk.first + chunk.second.size;
+            }
+        }
+
+        if (!isAllocated) [[unlikely]]
+            throw exception("Failed to find free memory for a tls slot!");
+
+        auto tlsPage{std::make_shared<TlsPage>(pageCandidate)};
         tlsPages.push_back(tlsPage);
         return tlsPage->ReserveSlot();
     }
@@ -72,36 +93,32 @@ namespace skyline::kernel::type {
         if (disableThreadCreation)
             return nullptr;
         if (!stackTop && threads.empty()) { //!< Main thread stack is created by the kernel and owned by the process
-            mainThreadStack = std::make_shared<KPrivateMemory>(state, 0, span<u8>{state.process->memory.stack.data(), state.process->npdm.meta.mainThreadStackSize}, memory::Permission{true, true, false}, memory::states::Stack);
-            stackTop = mainThreadStack->guest.end().base();
+            bool isAllocated{};
+
+            u8 *pageCandidate{memory.stack.data()};
+            std::pair<u8 *, ChunkDescriptor> chunk;
+            while (state.process->memory.stack.contains(span<u8>(pageCandidate, state.process->npdm.meta.mainThreadStackSize))) {
+                chunk = memory.GetChunk(pageCandidate).value();
+
+                if (chunk.second.state == memory::states::Unmapped && chunk.second.size >= state.process->npdm.meta.mainThreadStackSize) {
+                    memory.MapStackMemory(span<u8>{pageCandidate, state.process->npdm.meta.mainThreadStackSize});
+                    isAllocated = true;
+                    break;
+                } else {
+                    pageCandidate = chunk.first + chunk.second.size;
+                }
+            }
+
+            if (!isAllocated) [[unlikely]]
+                throw exception("Failed to map main thread stack!");
+
+            stackTop = pageCandidate + state.process->npdm.meta.mainThreadStackSize;
+            mainThreadStack = span<u8>(pageCandidate, state.process->npdm.meta.mainThreadStackSize);
         }
         size_t tid{threads.size() + 1}; //!< The first thread is HOS-1 rather than HOS-0, this is to match the HOS kernel's behaviour
         auto thread{NewHandle<KThread>(this, tid, entry, argument, stackTop, priority ? *priority : state.process->npdm.meta.mainThreadPriority, idealCore ? *idealCore : state.process->npdm.meta.idealCore).item};
         threads.push_back(thread);
         return thread;
-    }
-
-    std::optional<KProcess::HandleOut<KMemory>> KProcess::GetMemoryObject(u8 *ptr) {
-        std::shared_lock lock(handleMutex);
-
-        for (KHandle index{}; index < handles.size(); index++) {
-            auto &object{handles[index]};
-            if (object) {
-                switch (object->objectType) {
-                    case type::KType::KPrivateMemory:
-                    case type::KType::KSharedMemory:
-                    case type::KType::KTransferMemory: {
-                        auto mem{std::static_pointer_cast<type::KMemory>(object)};
-                        if (mem->guest.contains(ptr))
-                            return std::make_optional<KProcess::HandleOut<KMemory>>({mem, constant::BaseHandleIndex + index});
-                    }
-
-                    default:
-                        break;
-                }
-            }
-        }
-        return std::nullopt;
     }
 
     void KProcess::ClearHandleTable() {
@@ -112,7 +129,7 @@ namespace skyline::kernel::type {
     constexpr u32 HandleWaitersBit{1UL << 30}; //!< A bit which denotes if a mutex psuedo-handle has waiters or not
 
     Result KProcess::MutexLock(const std::shared_ptr<KThread> &thread, u32 *mutex, KHandle ownerHandle, KHandle tag, bool failOnOutdated) {
-        TRACE_EVENT_FMT("kernel", "MutexLock 0x{:X} @ 0x{:X}", mutex, thread->id);
+        TRACE_EVENT_FMT("kernel", "MutexLock {} @ 0x{:X}", fmt::ptr(mutex), thread->id);
 
         std::shared_ptr<KThread> owner;
         try {
@@ -154,7 +171,7 @@ namespace skyline::kernel::type {
     }
 
     void KProcess::MutexUnlock(u32 *mutex) {
-        TRACE_EVENT_FMT("kernel", "MutexUnlock 0x{:X}", mutex);
+        TRACE_EVENT_FMT("kernel", "MutexUnlock {}", fmt::ptr(mutex));
 
         std::scoped_lock lock{state.thread->waiterMutex};
         auto &waiters{state.thread->waiters};
@@ -216,7 +233,7 @@ namespace skyline::kernel::type {
     }
 
     Result KProcess::ConditionVariableWait(u32 *key, u32 *mutex, KHandle tag, i64 timeout) {
-        TRACE_EVENT_FMT("kernel", "ConditionVariableWait 0x{:X} (0x{:X})", key, mutex);
+        TRACE_EVENT_FMT("kernel", "ConditionVariableWait {} ({})", fmt::ptr(key), fmt::ptr(mutex));
 
         {
             // Update all waiter information
@@ -319,7 +336,7 @@ namespace skyline::kernel::type {
     }
 
     void KProcess::ConditionVariableSignal(u32 *key, i32 amount) {
-        TRACE_EVENT_FMT("kernel", "ConditionVariableSignal 0x{:X}", key);
+        TRACE_EVENT_FMT("kernel", "ConditionVariableSignal {}", fmt::ptr(key));
 
         i32 waiterCount{amount};
         while (amount <= 0 || waiterCount) {
@@ -337,7 +354,7 @@ namespace skyline::kernel::type {
                     conditionVariable = thread->waitConditionVariable;
                     #ifndef NDEBUG
                     if (conditionVariable != key)
-                        Logger::Warn("Condition variable mismatch: 0x{:X} != 0x{:X}", conditionVariable, key);
+                        LOGW("Condition variable mismatch: {} != {}", conditionVariable, fmt::ptr(key));
                     #endif
 
                     syncWaiters.erase(it);
@@ -391,7 +408,7 @@ namespace skyline::kernel::type {
     }
 
     Result KProcess::WaitForAddress(u32 *address, u32 value, i64 timeout, ArbitrationType type) {
-        TRACE_EVENT_FMT("kernel", "WaitForAddress 0x{:X}", address);
+        TRACE_EVENT_FMT("kernel", "WaitForAddress {}", fmt::ptr(address));
 
         {
             std::scoped_lock lock{syncWaiterMutex};
@@ -459,7 +476,7 @@ namespace skyline::kernel::type {
     }
 
     Result KProcess::SignalToAddress(u32 *address, u32 value, i32 amount, SignalType type) {
-        TRACE_EVENT_FMT("kernel", "SignalToAddress 0x{:X}", address);
+        TRACE_EVENT_FMT("kernel", "SignalToAddress {}", fmt::ptr(address));
 
         std::scoped_lock lock{syncWaiterMutex};
         auto queue{syncWaiters.equal_range(address)};

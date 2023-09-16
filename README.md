@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-    <b>Strato</b> is an experimental emulator that runs on <b>ARMv8 Android™</b> devices and emulates the functionality of a <b>Nintendo Switch™</b> system, licensed under <a href="https://github.com/strato-emu/strato/blob/master/LICENSE.md"><b>Mozilla Public License 2.0</b></a>
+    <b>Strato</b> is an experimental emulator that runs on <b>ARMv8 Android™</b> devices and emulates the functionality of a <b>Nintendo Switch™</b> system, licensed under <a href="https://github.com/strato-emu/strato/blob/master/LICENSE.md"><b>GNU General Public License v3.0 or later</b></a>
 </p>
 
 ---
@@ -31,7 +31,7 @@ A few noteworthy teams/projects who've helped us along the way are:
 
 * **[Ryujinx](https://ryujinx.org/):** We've used Ryujinx for reference throughout the project, the accuracy of their HLE implementations of Switch subsystems make it an amazing reference. The team behind the project has been extremely helpful with any queries we've had and have constantly helped us with any issues we've come across. **It should be noted that Strato is not based on Ryujinx**.
 
-* **[yuzu](https://yuzu-emu.org/):** Strato's shader compiler is a **fork** of *yuzu*'s shader compiler with Strato-specific changes, using it allowed us to focus on the parts of GPU emulation that we could specifically optimize for mobile while having a high-quality shader compiler implementation as a base. The team behind *yuzu* has also often helped us and have graciously provided us with a license exemption.
+* **[yuzu](https://yuzu-emu.org/):** Strato's shader compiler is a **fork** of *yuzu*'s shader compiler with Strato-specific changes, using it allowed us to focus on the parts of GPU emulation that we could specifically optimize for mobile while having a high-quality shader compiler implementation as a base.
 
 * **[Switchbrew](https://github.com/switchbrew/):** We've extensively used Switchbrew whether that be their **[wiki](https://switchbrew.org/)** with its colossal amount of information on the Switch that has saved us countless hours of time or **[libnx](https://github.com/switchbrew/libnx)** which was crucial to initial development of the emulator to ensure that our HLE kernel and sysmodule implementations were accurate.
 

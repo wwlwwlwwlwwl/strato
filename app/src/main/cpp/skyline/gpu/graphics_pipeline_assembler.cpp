@@ -2,6 +2,7 @@
 // Copyright © 2022 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include <boost/functional/hash.hpp>
+#include <fstream>
 #include <filesystem>
 #include <gpu.h>
 #include "graphics_pipeline_assembler.h"
@@ -48,7 +49,7 @@ namespace skyline::gpu {
 
         std::ifstream stream{path, std::ios::binary};
         if (stream.fail()) {
-            Logger::Warn("Failed to open Vulkan pipeline cache!");
+            LOGW("Failed to open Vulkan pipeline cache!");
             return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
         }
 
@@ -59,7 +60,7 @@ namespace skyline::gpu {
         stream.read(reinterpret_cast<char *>(readData.data()), static_cast<std::streamsize>(header.size));
 
         if (header.hash != XXH64(readData.data(), readData.size(), 0)) {
-            Logger::Warn("Ignoring invalid pipeline cache file!");
+            LOGW("Ignoring invalid pipeline cache file!");
             return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
         }
 
@@ -79,14 +80,14 @@ namespace skyline::gpu {
         };
         std::ofstream stream{path, std::ios::binary | std::ios::trunc};
         if (stream.fail()) {
-            Logger::Warn("Failed to write Vulkan pipeline cache!");
+            LOGW("Failed to write Vulkan pipeline cache!");
             return;
         }
 
         stream.write(reinterpret_cast<char *>(&header), sizeof(PipelineCacheFileDataHeader));
         stream.write(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
 
-        Logger::Info("Wrote Vulkan pipeline cache to {} (size: 0x{:X} bytes)", path.string(), data.size());
+        LOGI("Wrote Vulkan pipeline cache to {} (size: 0x{:X} bytes)", path.string(), data.size());
     }
 
     GraphicsPipelineAssembler::GraphicsPipelineAssembler(GPU &gpu, std::string_view pipelineCacheDir)
@@ -214,6 +215,9 @@ namespace skyline::gpu {
 
         std::scoped_lock lock{mutex};
         compilePendingDescs.erase(pipelineDescIt);
+        if (compilationCallback)
+            compilationCallback();
+
         return pipeline;
     }
 
@@ -251,5 +255,16 @@ namespace skyline::gpu {
             std::vector<u8> rawData{vkPipelineCache.getData()};
             SerialisePipelineCache(gpu, pipelineCacheDir, rawData);
         });
+    }
+
+    void GraphicsPipelineAssembler::RegisterCompilationCallback(std::function<void()> callback) {
+        if (compilationCallback)
+            throw exception("A compilation callback is already registered");
+
+        compilationCallback = std::move(callback);
+    }
+
+    void GraphicsPipelineAssembler::UnregisterCompilationCallback() {
+        compilationCallback = {};
     }
 }
